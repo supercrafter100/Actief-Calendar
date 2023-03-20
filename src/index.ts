@@ -4,13 +4,13 @@ dotenv.config();
 
 (async () => {
 
-    if (!process.env.USERNAME || !process.env.PASSWORD) {
+    if (!process.env.USER || !process.env.PASS) {
         console.log("Please set the USERNAME and PASSWORD environment variables");
         return;
     }
 
     const api = new ActiefAPI();
-    const cookies = await api.login(process.env.USERNAME, process.env.PASSWORD);
+    const cookies = await api.login(process.env.USER, process.env.PASS);
 
     if (!cookies) {
         console.error("Failed to login");

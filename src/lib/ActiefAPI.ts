@@ -20,7 +20,6 @@ export default class ActiefAPI {
         const cookies = res.headers.get("set-cookie");
 
         // Make a post request to login with the token and user credentials
-
         const params = new URLSearchParams();
         params.append("ReturnUrl", "/connect/authorize/callback?client_id=portal-client&redirect_uri=https%3A%2F%2Fportal.actief.be%2Fassets%2Fhtml%2Fsignin-callback.html&response_type=code&scope=openid%20profile%20core-api-client&state=d8e2a7cb527e41a2a8f63544ffc26d7e&code_challenge=eDh9uXeKe9ux83XgiHL0siNj3w3e7cr3pEr8hz_tXkM&code_challenge_method=S256&response_mode=query");
         params.append("Username", username);

@@ -3,18 +3,18 @@ import { ICalCalendar } from "ical-generator";
 
 export default class CalendarManager {
 
-    private static Calendars = new Map<string, CalendarManager>();
+    public static Calendars = new Map<string, CalendarManager>();
     public static async GetCalendar(id: string, username: string, password: string) {
-        if (this.Calendars.has(id)) return this.Calendars.get(id);
+        if (CalendarManager.Calendars.has(id)) return CalendarManager.Calendars.get(id);
 
         const calendar = new CalendarManager(username, password);
         await calendar.refreshCalendar();
-        this.Calendars.set(id, calendar);
+        CalendarManager.Calendars.set(id, calendar);
         return calendar;
     }
 
     public static async RefreshCalendars() {
-        for (const calendar of this.Calendars.values()) {
+        for (const calendar of CalendarManager.Calendars.values()) {
             await calendar.refreshCalendar();
         }
     }

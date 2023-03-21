@@ -1,32 +1,29 @@
-import ActiefAPI from "./lib/ActiefAPI";
-import dotenv from 'dotenv';
-dotenv.config();
+import express from 'express';
+import CalendarManager from './lib/CalendarManager';
 
-(async () => {
+const REFRESH_RATE = 1000 * 60 * 10 // 10 minutes
 
-    if (!process.env.USER || !process.env.PASS) {
-        console.log("Please set the USERNAME and PASSWORD environment variables");
-        return;
+const registeredUsers = {
+    'aaaaaaa': {
+        username: '',
+        password: ''
+    }
+} as any
+
+const app = express();
+app.all('/:id', async (req, res) => {
+    const userIdentifier = req.params.id;
+
+    if (!registeredUsers[userIdentifier]) {
+        return res.status(404).send("Not found");
     }
 
-    const api = new ActiefAPI();
-    const cookies = await api.login(process.env.USER, process.env.PASS);
+    const calendar = await CalendarManager.GetCalendar(userIdentifier, registeredUsers[userIdentifier].username, registeredUsers[userIdentifier].password);
+    calendar?.calendar.serve(res);
+})
 
-    if (!cookies) {
-        console.error("Failed to login");
-        return;
-    }
+app.listen(process.env.PORT || 5000, () => {
+    console.log("ready");
+});
 
-    const { code } = await api.AuthorizeClient(cookies);
-    const token = await api.getAccessToken(cookies, code);
-
-    await api.getCurrentUser(token);
-
-    const now = new Date();
-    const then = new Date();
-    now.setMonth(now.getMonth() - 1);
-    then.setMonth(then.getMonth() + 1);
-
-    const json = await api.getCalenderEvents(cookies, token, now, then);
-    console.log(json);
-})();
+setInterval(CalendarManager.RefreshCalendars, REFRESH_RATE);

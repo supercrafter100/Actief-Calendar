@@ -1,5 +1,6 @@
 import { load } from 'cheerio';
-import { EventsResponse } from '../types/ActiefAPITypes';
+import { EventsResponse, UserResponse } from '../types/ActiefAPITypes';
+import { base64URLEncode, GenerateCodeVerifier, sha256 } from '../util/Util';
 
 export default class ActiefAPI {
     /**
@@ -47,8 +48,12 @@ export default class ActiefAPI {
      * 
      * @param cookies 
      */
-    public async AuthorizeClient(cookies: string): Promise<{ code: string, state: string, session_state: string }> {
-        const url = "https://login.actief.be/connect/authorize?client_id=portal-client&redirect_uri=https%3A%2F%2Fportal.actief.be%2Fassets%2Fhtml%2Fsilent-callback.html&response_type=code&scope=openid&state=021cec90c6734612a9672879e753abbd&code_challenge=UuhwUNldAiaawf8mbI9dZLJozI_AKiv7CinxxnbET1Q&code_challenge_method=S256&prompt=none&response_mode=query";
+    public async AuthorizeClient(cookies: string): Promise<{ code: string, state: string, session_state: string, code_verifier: string }> {
+
+        const codeVerifier = GenerateCodeVerifier();
+        const codeChallenge = base64URLEncode(sha256(codeVerifier));
+
+        const url = `https://login.actief.be/connect/authorize?client_id=portal-client&redirect_uri=https%3A%2F%2Fportal.actief.be%2Fassets%2Fhtml%2Fsilent-callback.html&response_type=code&scope=openid%20profile%20core-api-client&state=021cec90c6734612a9672879e753abbd&code_challenge=${codeChallenge}&code_challenge_method=S256&prompt=none&response_mode=query`;
         const res = await fetch(url, {
             method: "GET",
             headers: {
@@ -70,7 +75,8 @@ export default class ActiefAPI {
         return {
             code: urlParams.get("code") as string,
             state: urlParams.get("state") as string,
-            session_state: urlParams.get("session_state") as string
+            session_state: urlParams.get("session_state") as string,
+            code_verifier: codeVerifier
         }
     }
 
@@ -78,15 +84,15 @@ export default class ActiefAPI {
      * Get the access token
      * @param cookies The session cookies
      */
-    public async getAccessToken(cookies: string, code: string): Promise<string> {
+    public async getAccessToken(cookies: string, code: string, code_verifier: string): Promise<string> {
         const url = "https://login.actief.be/connect/token";
 
         const params = new URLSearchParams();
         params.append("client_id", "portal-client");
         params.append("grant_type", "authorization_code");
         params.append("redirect_uri", "https://portal.actief.be/assets/html/silent-callback.html");
-        params.append("code_verifier", "6ec47285d9ce4f419a4536c8539b73868cfc2dd4463444a9a13fa8da9ead646d9aafce67944b44e393bd5701b92fdfbb");
-        params.append("code", code)
+        params.append("code_verifier", code_verifier);
+        params.append("code", code);
 
         const res = await fetch(url, {
             method: "POST",
@@ -102,21 +108,21 @@ export default class ActiefAPI {
         return json.access_token;
     }
 
-    public async getCurrentUser(token: string) {
+    public async getCurrentUser(token: string): Promise<UserResponse> {
         const url = "https://login.actief.be/connect/userinfo";
         const res = await fetch(url, {
             method: 'GET',
             headers: {
-                'Authorization': `Bearer ${token}`
+                'Authorization': `Bearer ${token}`,
+                'content-type': 'application/json'
             }
         });
         const json = await res.json();
-        console.log(json);
+        return json;
     }
 
     public async getCalenderEvents(cookies: string, token: string, from: Date, to: Date): Promise<EventsResponse> {
-        const url = `https://core-client-api.actief.be/portal/v1/candidate/407044/calender-overview-events?from=${from.toString()}&until=${to.toString()}`;
-        console.log(`Bearer ${token}`)
+        const url = `https://core-client-api.actief.be/portal/v1/candidate/407044/calender-overview-events?from=${from.toLocaleDateString('en-US')}&until=${to.toLocaleDateString('en-US')}`;
         const res = await fetch(url, {
             method: 'GET',
             headers: {
@@ -129,7 +135,6 @@ export default class ActiefAPI {
             }
         });
 
-        console.log(res.status);
         return await res.json();
     }
 }

@@ -59,8 +59,6 @@ export default class CalendarManager {
 
         this.calendar.clear();
         for (const event of events.events) {
-            if (event.type !== 90000) continue;
-
             this.calendar.createEvent({
                 start: event.from,
                 end: event.until,

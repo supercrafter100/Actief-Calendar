@@ -1,5 +1,5 @@
 import { load } from 'cheerio';
-import { EventsResponse, UserResponse } from '../types/ActiefAPITypes';
+import { AvailabilitiesResponse, EventsResponse, UserResponse } from '../types/ActiefAPITypes';
 import { base64URLEncode, GenerateCodeVerifier, sha256 } from '../util/Util';
 
 export default class ActiefAPI {
@@ -41,6 +41,7 @@ export default class ActiefAPI {
         if (res2.status === 302) {
             return res2.headers.get("set-cookie") as string;
         }
+
         return undefined;
     }
 
@@ -122,7 +123,8 @@ export default class ActiefAPI {
     }
 
     public async getCalenderEvents(cookies: string, token: string, from: Date, to: Date): Promise<EventsResponse> {
-        const url = `https://core-client-api.actief.be/portal/v1/candidate/407044/calender-overview-events?from=${from.toLocaleDateString('en-US')}&until=${to.toLocaleDateString('en-US')}`;
+        const candidateId = await this.getCurrentCandidate(token);
+        const url = `https://core-client-api.actief.be/portal/v1/candidate/${candidateId}/calender-overview-events?from=${from.toLocaleDateString('en-US')}&until=${to.toLocaleDateString('en-US')}`;
         const res = await fetch(url, {
             method: 'GET',
             headers: {
@@ -136,5 +138,58 @@ export default class ActiefAPI {
         });
 
         return await res.json();
+    }
+
+    public async getAvailabilities(token: string): Promise<AvailabilitiesResponse[]> {
+        const candidateId = await this.getCurrentCandidate(token);
+        const url = `https://core-client-api.actief.be/portal/v1/candidate/${candidateId}/calendars?calendarTypeDefinition=90003&page=1&pageSize=1000000`;
+        const res = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        const json = await res.json();
+        return json.candidateCalendars;
+    }
+
+    public async getCurrentCandidate(token: string): Promise<number> {
+        const url = "https://core-client-api.actief.be/portal/v1/candidate/current";
+        const res = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'content-type': 'application/json'
+            }
+        });
+        const json = await res.json();
+        return json.candidateId;
+    }
+
+    public async registerNewAvailability(token: string, from: Date, to: Date) {
+        const candidateId = await this.getCurrentCandidate(token);
+        const url = `https://core-client-api.actief.be/portal/v1/candidate/${candidateId}/calenders/availabilities`
+        const data = {
+            candidateCalendar: {
+                candidateCalendarType: 77101,
+                from: `${from.getUTCFullYear()}-${(from.getUTCMonth() + 1).toString().padStart(2, '0')}-${from.getUTCDate().toString().padStart(2, '0')}`,
+                hoursFrom: from.getUTCHours(),
+                hoursUntil: to.getUTCHours(),
+                minutesFrom: from.getUTCMinutes(),
+                minutesUntil: to.getUTCMinutes(),
+                until: `${to.getUTCFullYear()}-${(to.getUTCMonth() + 1).toString().padStart(2, '0')}-${to.getUTCDate().toString().padStart(2, '0')}`
+            },
+            recurringEnds: false
+        }
+        const response = await fetch(url, {
+            method: 'POST',
+            body: JSON.stringify(data),
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        const json = await response.json();
+        return json.validationBag.isValid as boolean;
     }
 }

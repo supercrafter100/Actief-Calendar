@@ -1,13 +1,18 @@
-import ActiefAPI from "./ActiefAPI";
-import { ICalCalendar } from "ical-generator";
-import Database from "./Database";
-import logToDiscordWebhook from "../util/LogToWebhook";
+import ActiefAPI from './ActiefAPI';
+import { ICalCalendar } from 'ical-generator';
+import Database from './Database';
+import logToDiscordWebhook from '../util/LogToWebhook';
 
 export default class CalendarManager {
-
     public static Calendars = new Map<string, CalendarManager>();
-    public static async GetCalendar(id: string, username: string, password: string, database: Database) {
-        if (CalendarManager.Calendars.has(id)) return CalendarManager.Calendars.get(id);
+    public static async GetCalendar(
+        id: string,
+        username: string,
+        password: string,
+        database: Database
+    ) {
+        if (CalendarManager.Calendars.has(id))
+            return CalendarManager.Calendars.get(id);
 
         const calendar = new CalendarManager(username, password, database);
         await calendar.refreshCalendar();
@@ -34,30 +39,28 @@ export default class CalendarManager {
         this._database = database;
     }
 
-    public async getAccessToken() {
-        const cookies = await this.actiefApi.login(this._username, this._password);
-        if (!cookies) {
-            return { code: undefined, cookies: undefined }
-        }
-        const { code, code_verifier } = await this.actiefApi.AuthorizeClient(cookies);
-        const token = await this.actiefApi.getAccessToken(cookies, code, code_verifier);
-
-        return { token, cookies };
+    public async getCookies() {
+        return await this.actiefApi.login(this._username, this._password);
     }
 
-    public async getCalendarEventsForYear() {
-        const first = new Date(2023, 0, 1);
-        const last = new Date(first.getFullYear() + 1, 0, 1);
+    public async getUpcomingCalendarEvents() {
+        const cookies = await this.actiefApi.login(
+            this._username,
+            this._password
+        );
 
-        const { token, cookies } = await this.getAccessToken();
-        if (!token || !cookies) return;
+        if (!cookies) return;
 
-        const events = await this.actiefApi.getCalenderEvents(cookies, token, first, last);
-        return events;
+        const events = await this.actiefApi.getCalenderEvents(cookies);
+        return events.events.map((event) => ({
+            start: event.start,
+            end: event.end,
+            summary: `${event.name}`,
+        }));
     }
 
     public async refreshCalendar() {
-        const events = await this.getCalendarEventsForYear();
+        const events = await this.getUpcomingCalendarEvents();
         if (!events) return;
 
         const user = await this._database.getUserByEmail(this._username);
@@ -66,28 +69,61 @@ export default class CalendarManager {
         const existingEvents = this.calendar.events();
         const accumulatedAdditions: Date[] = [];
 
-        for (const event of events.events) {
-            if (event.calendarTypeDefinitionId === 4) continue;
-            if (existingEvents.some(ev => datesAreOnSameDay(new Date(ev.start() as string), new Date(event.from)))) continue;
+        for (const event of events) {
+            if (
+                existingEvents.some((ev) =>
+                    datesAreOnSameDay(
+                        new Date(ev.start() as string),
+                        new Date(event.start)
+                    )
+                )
+            )
+                continue;
 
             this.calendar.createEvent({
-                start: event.from,
-                end: event.until,
-                summary: event.label
-            })
+                start: event.start,
+                end: event.end,
+                summary: event.summary,
+            });
 
-            if (new Date(event.from).getTime() > Date.now()) {
-                accumulatedAdditions.push(new Date(event.from));
+            if (new Date(event.start).getTime() > Date.now()) {
+                accumulatedAdditions.push(new Date(event.end));
             }
         }
+
+        for (const event of existingEvents) {
+            if (!events.some((ev) => ev.start === event.start())) {
+                // Slice the event out of the calendar events
+                this.calendar
+                    .events()
+                    .splice(this.calendar.events().indexOf(event), 1);
+            }
+        }
+
         if (accumulatedAdditions.length) {
-            logToDiscordWebhook(webhook.url, `New contract${accumulatedAdditions.length == 1 ? "" : "s"} ${accumulatedAdditions.length == 1 ? "has" : "have"} been made for the following date${accumulatedAdditions.length == 1 ? "" : "s"}:\n\n ${accumulatedAdditions.map(addition => `• \`${addition.getDate()}/${addition.getMonth() + 1}/${addition.getFullYear()}\``).join('\n')}`)
+            logToDiscordWebhook(
+                webhook.url,
+                `New contract${accumulatedAdditions.length == 1 ? '' : 's'} ${
+                    accumulatedAdditions.length == 1 ? 'has' : 'have'
+                } been made for the following date${
+                    accumulatedAdditions.length == 1 ? '' : 's'
+                }:\n\n ${accumulatedAdditions
+                    .map(
+                        (addition) =>
+                            `• \`${addition.getDate()}/${
+                                addition.getMonth() + 1
+                            }/${addition.getFullYear()}\``
+                    )
+                    .join('\n')}`
+            );
         }
     }
 }
 
 function datesAreOnSameDay(first: Date, second: Date) {
-    return first.getFullYear() === second.getFullYear() &&
+    return (
+        first.getFullYear() === second.getFullYear() &&
         first.getMonth() === second.getMonth() &&
-        first.getDate() === second.getDate();
+        first.getDate() === second.getDate()
+    );
 }
